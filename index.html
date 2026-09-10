@@ -85,7 +85,22 @@ input,select{background:#11151b;color:var(--text);border:1px solid #343b47;borde
 
 <section id="history" class="view">
 <div class="row" style="justify-content:space-between"><h2>History</h2><button onclick="exportData()">Export JSON</button></div>
-<div class="row"><input id="historySearch" placeholder="Filter exercise or workout..." oninput="renderHistory()"></div>
+<div class="row">
+<input id="historySearch" placeholder="Filter exercise or workout..." oninput="renderHistory()">
+<select id="historyType" onchange="renderHistory()" style="max-width:180px">
+<option value="">All workout types</option>
+<option>Push</option><option>Pull</option><option>Leg</option><option>Compound</option>
+<option>Upper A</option><option>Lower A</option><option>Upper B</option><option>Lower B</option>
+<option>Full Body A</option><option>Full Body B</option><option>Full Body C</option><option>Home Full Body</option>
+</select>
+</div>
+<div class="notice">
+<b>Legacy history import</b>
+<p class="small">Import the private CSV containing your previously logged Push / Pull / Leg / Compound sessions. The rows are inserted into your own Supabase account.</p>
+<input id="legacyFile" type="file" accept=".csv" style="max-width:420px">
+<button onclick="importCSV()">Import legacy CSV</button>
+<div id="importStatus" class="status"></div>
+</div>
 <div style="overflow:auto"><table><thead><tr><th>Date</th><th>Workout</th><th>Exercise</th><th>Type</th><th>Set</th><th>Reps</th><th>Weight</th></tr></thead><tbody id="historyBody"></tbody></table></div>
 </section>
 
@@ -197,8 +212,59 @@ async function saveWorkout(){
 
 function renderHistory(){
   let q=(document.getElementById("historySearch")?.value||"").toLowerCase();
-  let a=logs.filter(x=>`${x.workout} ${x.exercise_menu}`.toLowerCase().includes(q)).slice().reverse();
+  let type=document.getElementById("historyType")?.value||"";
+  let a=logs.filter(x=>
+    (!q || `${x.workout} ${x.exercise_menu}`.toLowerCase().includes(q)) &&
+    (!type || x.workout===type)
+  ).slice().reverse();
   document.getElementById("historyBody").innerHTML=a.map(x=>`<tr><td>${x.workout_date}</td><td>${x.workout}</td><td>${x.exercise_menu}</td><td>${x.exercise_type}</td><td>${x.set_number}</td><td>${x.reps??""}</td><td>${x.weight??""}</td></tr>`).join("");
+}
+async function importCSV(){
+  const file=document.getElementById("legacyFile").files[0];
+  const status=document.getElementById("importStatus");
+  if(!file){status.textContent="Choose the legacy CSV first.";return}
+  status.textContent="Reading CSV...";
+  const text=await file.text();
+  const lines=text.split(/\r?\n/).filter(Boolean);
+  if(lines.length<2){status.textContent="CSV is empty.";return}
+  const parseLine=(line)=>{
+    const out=[];let cur="",quoted=false;
+    for(let i=0;i<line.length;i++){const c=line[i];
+      if(c==='"'){if(quoted&&line[i+1]==='"'){cur+='"';i++}else quoted=!quoted}
+      else if(c===","&&!quoted){out.push(cur);cur=""}else cur+=c;
+    }
+    out.push(cur);return out;
+  };
+  const headers=parseLine(lines[0]);
+  const idx={};headers.forEach((h,i)=>idx[h]=i);
+  const valid=["workout_date","workout","exercise_type","exercise_menu","set_number","reps","weight"];
+  if(valid.some(k=>idx[k]===undefined)){status.textContent="CSV columns do not match the training log format.";return}
+  const existing=new Set(logs.map(x=>[
+    x.workout_date,x.workout,x.exercise_type,x.exercise_menu,x.set_number,x.reps??"",x.weight??""
+  ].join("|")));
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const c=parseLine(lines[i]); if(c.length<headers.length) continue;
+    const r={
+      user_id:currentUser.id,
+      workout_date:c[idx.workout_date],
+      workout:c[idx.workout],
+      exercise_type:c[idx.exercise_type],
+      exercise_menu:c[idx.exercise_menu],
+      set_number:Number(c[idx.set_number]),
+      reps:c[idx.reps]===""?null:Number(c[idx.reps]),
+      weight:c[idx.weight]===""?null:Number(c[idx.weight])
+    };
+    const key=[r.workout_date,r.workout,r.exercise_type,r.exercise_menu,r.set_number,r.reps??"",r.weight??""].join("|");
+    if(r.workout_date&&r.workout&&r.exercise_menu&&!existing.has(key)){rows.push(r);existing.add(key)}
+  }
+  if(!rows.length){status.textContent="Nothing new to import (or all rows already exist).";return}
+  status.textContent=`Uploading ${rows.length} set records...`;
+  const {data,error}=await db.from("workout_logs").insert(rows).select();
+  if(error){status.textContent="Import failed: "+error.message;return}
+  logs.push(...(data||[]));
+  status.textContent=`Imported ${rows.length} set records successfully. ☁️`;
+  renderHistory();renderDash();
 }
 function renderDash(){
   const m=measures.at(-1);
