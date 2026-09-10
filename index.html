@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Captain Invictus Training Log</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#0f1115;--card:#191d24;--muted:#9ca3af;--text:#f3f4f6;--line:#2b313b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,sans-serif}
+header{padding:18px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#0f1115ee;backdrop-filter:blur(10px);z-index:3}
+h1{font-size:20px;margin:0 0 4px}.sub{color:var(--muted);font-size:13px}
+nav{display:flex;gap:8px;overflow:auto;padding:10px 20px;border-bottom:1px solid var(--line)}
+button,select,input{font:inherit}button{background:#242a33;color:var(--text);border:1px solid #343b47;border-radius:9px;padding:9px 12px;cursor:pointer}button.primary{background:#f3f4f6;color:#111827;border-color:#f3f4f6}
+button.active{background:#f3f4f6;color:#111827}
+button:disabled{opacity:.5;cursor:not-allowed}
+main{max-width:1100px;margin:auto;padding:18px 20px 60px}.view{display:none}.view.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px}.label{font-size:12px;color:var(--muted)}.big{font-size:28px;font-weight:750;margin-top:5px}
+table{width:100%;border-collapse:collapse;margin-top:12px;background:var(--card);border-radius:12px;overflow:hidden}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}th{color:var(--muted);font-weight:600}
+input,select{background:#11151b;color:var(--text);border:1px solid #343b47;border-radius:8px;padding:8px;width:100%}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.section{margin:18px 0}.exercise{margin:12px 0;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:12px}.exercise h3{margin:0 0 9px;font-size:15px}
+.setrow{display:grid;grid-template-columns:45px 1fr 1fr 70px;gap:7px;align-items:center;margin:6px 0}.setnum{color:var(--muted);text-align:center}
+.small{font-size:12px;color:var(--muted)}.danger{color:#fca5a5}.success{color:#a7f3d0}.error{color:#fca5a5}.hidden{display:none!important}
+.notice{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#151922;margin:12px 0}.status{font-size:13px;margin-top:8px}
+.auth{max-width:420px;margin:55px auto}.auth h2{margin-top:0}.auth label{display:block;margin:10px 0 5px;font-size:13px;color:var(--muted)}
+.userbar{display:flex;justify-content:space-between;align-items:center;gap:10px}.email{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+@media(max-width:600px){main{padding:14px}.setrow{grid-template-columns:35px 1fr 1fr 62px}th:nth-child(1),td:nth-child(1){display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="userbar">
+    <div><h1>Captain Invictus Training Log</h1><div class="sub">Cloud-synced training • phone ↔ PC</div></div>
+    <div id="accountBar" class="hidden"><div class="email" id="userEmail"></div><button onclick="signOut()">Sign out</button></div>
+  </div>
+</header>
+
+<div id="authScreen" class="auth card">
+  <h2>Welcome, Captain 🫡</h2>
+  <p class="small">Sign in to keep your workouts and measurements synced between your phone and PC.</p>
+  <label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
+  <label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters">
+  <div class="row" style="margin-top:12px"><button class="primary" onclick="signIn()">Sign in</button><button onclick="signUp()">Create account</button></div>
+  <div id="authStatus" class="status"></div>
+</div>
+
+<div id="appScreen" class="hidden">
+<nav>
+<button data-view="dashboard" class="active">Dashboard</button>
+<button data-view="workout">Workout</button>
+<button data-view="history">History</button>
+<button data-view="measurements">Measurements</button>
+<button data-view="program">Program</button>
+</nav>
+<main>
+<section id="dashboard" class="view active">
+<div class="row" style="justify-content:space-between"><h2>Dashboard</h2><button class="primary" onclick="showView('workout')">Start Workout</button></div>
+<div class="grid">
+<div class="card"><div class="label">Latest Weight</div><div class="big" id="dashWeight">—</div></div>
+<div class="card"><div class="label">Latest Waist</div><div class="big" id="dashWaist">—</div></div>
+<div class="card"><div class="label">Workouts Logged</div><div class="big" id="dashWorkouts">0</div></div>
+<div class="card"><div class="label">Total Sets</div><div class="big" id="dashSets">0</div></div>
+</div>
+<div id="baselineNotice" class="notice hidden">
+<b>Want to add your Sep 5 baseline?</b>
+<p class="small">111.8 kg • waist 114 cm • chest 120 cm • shoulders 131 cm • arms 40/41 cm • thighs 58/60 cm • calves 50/50 cm • neck 46 cm • hips/glutes 117.5 cm</p>
+<button class="primary" onclick="importBaseline()">Add baseline to cloud</button>
+</div>
+<div class="section card"><b>Recent workouts</b><div id="recent"></div></div>
+</section>
+
+<section id="workout" class="view">
+<h2>Log Workout</h2>
+<div class="row">
+<select id="workoutType" style="max-width:260px">
+<option>Upper A</option><option>Lower A</option><option>Upper B</option><option>Lower B</option>
+<option>Full Body A</option><option>Full Body B</option><option>Full Body C</option><option>Home Full Body</option>
+</select>
+<input id="workoutDate" type="date" style="max-width:180px">
+</div>
+<div id="workoutForm" class="section"></div>
+<div class="row"><button class="primary" onclick="saveWorkout()">Save Workout</button><button onclick="clearWorkout()">Clear</button></div>
+<p class="small">After illness, keep the first session around 2–3 RIR and use conservative weights.</p>
+</section>
+
+<section id="history" class="view">
+<div class="row" style="justify-content:space-between"><h2>History</h2><button onclick="exportData()">Export JSON</button></div>
+<div class="row"><input id="historySearch" placeholder="Filter exercise or workout..." oninput="renderHistory()"></div>
+<div style="overflow:auto"><table><thead><tr><th>Date</th><th>Workout</th><th>Exercise</th><th>Type</th><th>Set</th><th>Reps</th><th>Weight</th></tr></thead><tbody id="historyBody"></tbody></table></div>
+</section>
+
+<section id="measurements" class="view">
+<h2>Body Measurements</h2>
+<div class="card">
+<div class="grid">
+<label>Date<input id="mDate" type="date"></label><label>Weight (kg)<input id="mWeight" type="number" step="0.1"></label>
+<label>Waist (cm)<input id="mWaist" type="number" step="0.1"></label><label>Chest (cm)<input id="mChest" type="number" step="0.1"></label>
+<label>Shoulders (cm)<input id="mShoulders" type="number" step="0.1"></label><label>Arm L (cm)<input id="mArmL" type="number" step="0.1"></label>
+<label>Arm R (cm)<input id="mArmR" type="number" step="0.1"></label><label>Thigh L (cm)<input id="mThighL" type="number" step="0.1"></label>
+<label>Thigh R (cm)<input id="mThighR" type="number" step="0.1"></label><label>Calf L (cm)<input id="mCalfL" type="number" step="0.1"></label>
+<label>Calf R (cm)<input id="mCalfR" type="number" step="0.1"></label><label>Neck (cm)<input id="mNeck" type="number" step="0.1"></label>
+<label>Hips/Glutes (cm)<input id="mHips" type="number" step="0.1"></label>
+</div><br><button class="primary" onclick="saveMeasurement()">Save Measurement</button>
+</div>
+<div style="overflow:auto"><table><thead><tr><th>Date</th><th>Weight</th><th>Waist</th><th>Chest</th><th>Shoulders</th><th>Arms</th><th>Thighs</th><th>Calves</th></tr></thead><tbody id="measurementBody"></tbody></table></div>
+</section>
+
+<section id="program" class="view">
+<h2>Program</h2><p class="small">4 gym days: Upper A / Lower A / Upper B / Lower B. 3 days: Full Body A / B / C. Home: adjustable-dumbbell full body.</p>
+<div id="programList"></div>
+</section>
+</main>
+</div>
+
+<script>
+const SUPABASE_URL = "https://xnkhnrtoafwxhctzxiou.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_4EYNo_aX2176mc96KH6t3w_g3CXKeuC";
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+const P={
+"Upper A":[["Compound","Barbell Bench Press",4,"5–8"],["Compound","Barbell Bent-Over Row",4,"6–8"],["Compound","Incline Dumbbell Press",3,"8–12"],["Compound","Lat Pulldown",3,"8–12"],["Compound","Shoulder Press",3,"8–12"],["Isolation","Cable/DB Lateral Raise",3,"12–15"],["Isolation","DB/Concentration Curl",3,"10–15"],["Isolation","Rope Pushdown",3,"10–15"]],
+"Lower A":[["Compound","Back Squat",4,"5–8"],["Compound","Romanian Deadlift",3,"8–10"],["Compound","Leg Press",3,"10–15"],["Isolation","Leg Curl",3,"10–15"],["Isolation","Leg Extension",3,"10–15"],["Isolation","Standing Calf Raise",4,"12–20"],["Core","Hanging Leg Raise / Crunch",3,"10–15"]],
+"Upper B":[["Compound","Standing Barbell OHP",4,"5–8"],["Compound","Barbell Bench Press",3,"6–10"],["Compound","Iso-Lateral Row",3,"8–12"],["Compound","Lat Pulldown",3,"8–12"],["Compound","Incline Dumbbell Press",3,"8–12"],["Isolation","Rear Delt Fly / Face Pull",3,"12–15"],["Isolation","Hammer Curl",3,"10–15"],["Isolation","Overhead Triceps Extension",3,"10–15"]],
+"Lower B":[["Compound","Deadlift",3,"3–5"],["Compound","Zercher Squat",3,"6–8"],["Compound","Hack Squat",3,"8–12"],["Isolation","Single-Leg Curl",3,"10–15"],["Isolation","Single-Leg Extension",3,"10–15"],["Carry","Farmer Walk",3,"30–40 m"],["Isolation","Calf Raise",4,"12–20"],["Core","Abs",3,"10–15"]],
+"Full Body A":[["Compound","Back Squat",4,"5–8"],["Compound","Bench Press",3,"6–10"],["Compound","Barbell Row",3,"6–10"],["Compound","RDL",3,"8–10"],["Compound","Lat Pulldown",3,"10–12"],["Isolation","Lateral Raise",2,"12–15"],["Core","Abs",3,"10–15"]],
+"Full Body B":[["Compound","Deadlift",3,"3–5"],["Compound","Standing OHP",3,"5–8"],["Compound","Lat Pulldown",3,"8–12"],["Compound","Leg Press",3,"10–15"],["Compound","Incline DB Press",3,"8–12"],["Isolation","Curl",2,"10–15"],["Isolation","Calf Raise",3,"12–20"]],
+"Full Body C":[["Compound","Back Squat",3,"6–8"],["Compound","Incline DB Press",3,"8–12"],["Compound","Barbell Row",3,"6–10"],["Compound","Hack Squat",3,"8–12"],["Compound","Lat Pulldown",3,"8–12"],["Compound","Shoulder Press",3,"8–12"],["Isolation","Triceps",2,"10–15"],["Core","Abs",3,"10–15"]],
+"Home Full Body":[["Compound","Goblet Squat",3,"8–12"],["Compound","DB Romanian Deadlift",3,"8–12"],["Compound","DB Floor Press",3,"8–12"],["Compound","One-Arm DB Row",3,"8–12"],["Compound","DB Shoulder Press",2,"8–12"],["Isolation","DB Lateral Raise",2,"12–20"],["Isolation","DB Curl",2,"10–15"],["Isolation","DB Overhead Triceps Extension",2,"10–15"]]
+};
+
+let logs=[], measures=[], currentUser=null;
+
+const today=()=>new Date().toISOString().slice(0,10);
+document.getElementById("workoutDate").value=today();
+document.getElementById("mDate").value=today();
+
+function status(msg, cls=""){const el=document.getElementById("authStatus");el.className="status "+cls;el.textContent=msg}
+async function signUp(){
+  const email=document.getElementById("authEmail").value.trim(), password=document.getElementById("authPassword").value;
+  if(!email||password.length<6){status("Enter an email and a password of at least 6 characters.","error");return}
+  const {data,error}=await db.auth.signUp({email,password});
+  if(error){status(error.message,"error");return}
+  if(data.session) await startApp(data.user);
+  else status("Account created. Check your email to confirm the account, then sign in.","success");
+}
+async function signIn(){
+  const email=document.getElementById("authEmail").value.trim(), password=document.getElementById("authPassword").value;
+  if(!email||!password){status("Enter your email and password.","error");return}
+  const {data,error}=await db.auth.signInWithPassword({email,password});
+  if(error){status(error.message,"error");return}
+  await startApp(data.user);
+}
+async function signOut(){await db.auth.signOut();location.reload()}
+
+async function startApp(user){
+  currentUser=user;
+  document.getElementById("authScreen").classList.add("hidden");
+  document.getElementById("appScreen").classList.remove("hidden");
+  document.getElementById("accountBar").classList.remove("hidden");
+  document.getElementById("userEmail").textContent=user.email||"";
+  await loadData();
+  renderProgram(); renderWorkout(); renderDash(); renderHistory(); renderMeasurements();
+}
+async function loadData(){
+  const [w,m]=await Promise.all([
+    db.from("workout_logs").select("*").eq("user_id",currentUser.id).order("workout_date",{ascending:true}).order("id",{ascending:true}),
+    db.from("body_measurements").select("*").eq("user_id",currentUser.id).order("measurement_date",{ascending:true}).order("id",{ascending:true})
+  ]);
+  if(w.error) alert("Could not load workout history: "+w.error.message); else logs=w.data||[];
+  if(m.error) alert("Could not load measurements: "+m.error.message); else measures=m.data||[];
+  document.getElementById("baselineNotice").classList.toggle("hidden", measures.some(x=>x.measurement_date==="2026-09-05"));
+}
+function showView(id){document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("active",x.dataset.view===id))}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>showView(b.dataset.view));
+
+function renderWorkout(){
+  let type=document.getElementById("workoutType").value, html="";
+  P[type].forEach((e,i)=>{
+    html+=`<div class="exercise"><h3>${e[1]} <span class="small">${e[0]} • ${e[3]} reps</span></h3>`;
+    for(let s=1;s<=e[2];s++) html+=`<div class="setrow"><div class="setnum">${s}</div><input id="r_${i}_${s}" type="number" placeholder="Reps"><input id="w_${i}_${s}" type="number" step="0.5" placeholder="kg"><button onclick="copyPrev(${i},${s})">↔</button></div>`;
+    html+="</div>";
+  });
+  document.getElementById("workoutForm").innerHTML=html;
+}
+document.getElementById("workoutType").onchange=renderWorkout;
+function copyPrev(i,s){if(s<=1)return;document.getElementById(`r_${i}_${s}`).value=document.getElementById(`r_${i}_${s-1}`).value;document.getElementById(`w_${i}_${s}`).value=document.getElementById(`w_${i}_${s-1}`).value}
+
+async function saveWorkout(){
+  const type=document.getElementById("workoutType").value,date=document.getElementById("workoutDate").value, rows=[];
+  P[type].forEach((e,i)=>{for(let s=1;s<=e[2];s++){let reps=document.getElementById(`r_${i}_${s}`).value,weight=document.getElementById(`w_${i}_${s}`).value;if(reps!==""||weight!=="")rows.push({user_id:currentUser.id,workout_date:date,workout:type,exercise_type:e[0],exercise_menu:e[1],set_number:s,reps:reps===""?null:Number(reps),weight:weight===""?null:Number(weight)})}});
+  if(!rows.length){alert("Nothing to save yet.");return}
+  const {data,error}=await db.from("workout_logs").insert(rows).select();
+  if(error){alert("Could not save workout: "+error.message);return}
+  logs.push(...(data||[])); alert("Workout saved to the cloud. ☁️"); renderDash(); renderHistory(); renderWorkout();
+}
+
+function renderHistory(){
+  let q=(document.getElementById("historySearch")?.value||"").toLowerCase();
+  let a=logs.filter(x=>`${x.workout} ${x.exercise_menu}`.toLowerCase().includes(q)).slice().reverse();
+  document.getElementById("historyBody").innerHTML=a.map(x=>`<tr><td>${x.workout_date}</td><td>${x.workout}</td><td>${x.exercise_menu}</td><td>${x.exercise_type}</td><td>${x.set_number}</td><td>${x.reps??""}</td><td>${x.weight??""}</td></tr>`).join("");
+}
+function renderDash(){
+  const m=measures.at(-1);
+  document.getElementById("dashWeight").textContent=m?.weight?m.weight+" kg":"—";
+  document.getElementById("dashWaist").textContent=m?.waist?m.waist+" cm":"—";
+  document.getElementById("dashSets").textContent=logs.length;
+  document.getElementById("dashWorkouts").textContent=new Set(logs.map(x=>x.workout_date+"|"+x.workout)).size;
+  let r=[...new Set(logs.map(x=>x.workout_date+"|"+x.workout))].slice(-5).reverse();
+  document.getElementById("recent").innerHTML=r.map(x=>"<div class='section'>"+x.replace("|"," — ")+"</div>").join("")||"<p class='small'>No workouts logged yet.</p>";
+  document.getElementById("baselineNotice").classList.toggle("hidden", measures.some(x=>x.measurement_date==="2026-09-05"));
+}
+async function saveMeasurement(){
+  const o={user_id:currentUser.id,measurement_date:document.getElementById("mDate").value,
+    weight:num("mWeight"),waist:num("mWaist"),chest:num("mChest"),shoulders:num("mShoulders"),
+    arm_left:num("mArmL"),arm_right:num("mArmR"),thigh_left:num("mThighL"),thigh_right:num("mThighR"),
+    calf_left:num("mCalfL"),calf_right:num("mCalfR"),neck:num("mNeck"),hips_glutes:num("mHips")};
+  const {data,error}=await db.from("body_measurements").insert(o).select().single();
+  if(error){alert("Could not save measurement: "+error.message);return}
+  measures.push(data); renderMeasurements(); renderDash(); alert("Measurement saved to the cloud. ☁️");
+}
+function num(id){const v=document.getElementById(id).value;return v===""?null:Number(v)}
+async function importBaseline(){
+  const o={user_id:currentUser.id,measurement_date:"2026-09-05",weight:111.8,waist:114,chest:120,shoulders:131,arm_left:40,arm_right:41,thigh_left:58,thigh_right:60,calf_left:50,calf_right:50,neck:46,hips_glutes:117.5};
+  const {data,error}=await db.from("body_measurements").insert(o).select().single();
+  if(error){alert("Could not import baseline: "+error.message);return}
+  measures.push(data);renderMeasurements();renderDash();
+}
+function renderMeasurements(){
+  document.getElementById("measurementBody").innerHTML=measures.slice().reverse().map(x=>`<tr><td>${x.measurement_date}</td><td>${x.weight??""}</td><td>${x.waist??""}</td><td>${x.chest??""}</td><td>${x.shoulders??""}</td><td>${x.arm_left??""}/${x.arm_right??""}</td><td>${x.thigh_left??""}/${x.thigh_right??""}</td><td>${x.calf_left??""}/${x.calf_right??""}</td></tr>`).join("");
+}
+function renderProgram(){document.getElementById("programList").innerHTML=Object.entries(P).map(([k,a])=>`<div class="card section"><b>${k}</b><ul>${a.map(e=>`<li>${e[1]} — ${e[2]} × ${e[3]}</li>`).join("")}</ul></div>`).join("")}
+function exportData(){
+  const data={logs,measurements:measures},blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download="captain-invictus-data.json";a.click();URL.revokeObjectURL(a.href);
+}
+db.auth.getSession().then(({data})=>{if(data.session)startApp(data.session.user);});
+</script>
+</body>
+</html>
